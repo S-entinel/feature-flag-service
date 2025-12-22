@@ -4,8 +4,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.main import app
-from app.database import get_db
+from app.database import get_db, get_cache_service
 from app.models.flag import Base
+from app.services.cache_service import CacheService
 
 # Test database
 TEST_DATABASE_URL = "sqlite:///./test_flags.db"
@@ -21,10 +22,16 @@ def override_get_db():
         db.close()
 
 
-# Override dependency
-app.dependency_overrides[get_db] = override_get_db
+def override_get_cache_service():
+    """Override cache service to disable caching in tests"""
+    return CacheService(redis_client=None)
 
-# Create test client - NO keyword argument
+
+# Override dependencies
+app.dependency_overrides[get_db] = override_get_db
+app.dependency_overrides[get_cache_service] = override_get_cache_service
+
+# Create test client
 client = TestClient(app)
 
 
