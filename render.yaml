@@ -23,4 +23,4 @@ databases:
     databaseName: feature_flags
     user: feature_flags_user
     plan: free
-```
+
