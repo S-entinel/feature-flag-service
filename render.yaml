@@ -33,6 +33,7 @@ services:
     name: feature-flags-redis
     plan: free
     maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
 
 databases:
   - name: feature-flags-db
