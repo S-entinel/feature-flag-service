@@ -27,15 +27,15 @@ services:
         sync: false
       - key: CACHE_TTL
         value: 300
+  
+  # Redis Cache
+  - type: redis
+    name: feature-flags-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru
 
 databases:
   - name: feature-flags-db
     databaseName: feature_flags
     user: feature_flags_user
     plan: free
-
-services:
-  - type: redis
-    name: feature-flags-redis
-    plan: free
-    maxmemoryPolicy: allkeys-lru
