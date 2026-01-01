@@ -11,32 +11,16 @@ services:
         fromDatabase:
           name: feature-flags-db
           property: connectionString
-      - key: REDIS_HOST
-        fromService:
-          type: redis
-          name: feature-flags-redis
-          property: host
-      - key: REDIS_PORT
-        fromService:
-          type: redis
-          name: feature-flags-redis
-          property: port
       - key: API_KEY
         generateValue: true
       - key: ALLOWED_ORIGINS
         sync: false
       - key: CACHE_TTL
         value: 300
-  
-  # Redis Cache
-  - type: redis
-    name: feature-flags-redis
-    plan: free
-    maxmemoryPolicy: allkeys-lru
-    ipAllowList: []
 
 databases:
   - name: feature-flags-db
     databaseName: feature_flags
     user: feature_flags_user
     plan: free
+```
