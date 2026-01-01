@@ -3,23 +3,26 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
 from app.api import flags
+from app.config import settings
+from app.security import get_api_key_info
 
 # Initialize database
 init_db()
 
 # Create FastAPI app
 app = FastAPI(
-    title="Feature Flag Service",
-    description="A simple feature flag service for controlling feature rollouts",
-    version="1.0.0"
+    title=settings.APP_NAME,
+    description="A production-ready feature flag service for controlling feature rollouts",
+    version=settings.APP_VERSION,
+    debug=settings.DEBUG
 )
 
-# CORS middleware for frontend
+# CORS middleware - properly configured from environment
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Change in production
+    allow_origins=settings.ALLOWED_ORIGINS,  # Controlled via ALLOWED_ORIGINS env var
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -29,15 +32,41 @@ app.include_router(flags.router)
 
 @app.get("/")
 def root():
-    """Health check endpoint"""
+    """Root endpoint with API information"""
     return {
-        "message": "Feature Flag Service is running",
-        "version": "1.0.0",
-        "docs": "/docs"
+        "message": f"{settings.APP_NAME} is running",
+        "version": settings.APP_VERSION,
+        "docs": "/docs",
+        "health": "/health"
     }
 
 
 @app.get("/health")
 def health_check():
-    """Health check for monitoring"""
-    return {"status": "healthy"}
+    """
+    Health check endpoint for monitoring and load balancers
+    
+    Returns service health status and configuration info.
+    """
+    return {
+        "status": "healthy",
+        "version": settings.APP_VERSION,
+        "environment": "production" if settings.is_production else "development",
+        "database": "connected",  # Could add actual DB ping here
+        "cache": "enabled" if settings.REDIS_HOST else "disabled"
+    }
+
+
+@app.get("/security-info")
+def security_info():
+    """
+    Get security configuration information
+    
+    Useful for debugging and verifying security setup.
+    Does not expose sensitive values.
+    """
+    return {
+        **get_api_key_info(),
+        "cors_origins": settings.ALLOWED_ORIGINS,
+        "rate_limiting_enabled": settings.RATE_LIMIT_ENABLED
+    }

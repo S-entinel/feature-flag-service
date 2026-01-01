@@ -29,13 +29,30 @@ services:
     ports:
       - "8000:8000"
     environment:
+      # Database
       - DATABASE_URL=sqlite:///./data/feature_flags.db
+      
+      # Redis
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
+      - CACHE_TTL=300
+      
+      # Security - CHANGE THESE IN PRODUCTION!
+      # Generate API key: openssl rand -hex 32
+      - API_KEY=${API_KEY:-}  # Empty = no auth (development only)
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3001}
+      
+      # App settings
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DEBUG=False
+      
+      # Rate limiting
+      - RATE_LIMIT_ENABLED=True
+      - RATE_LIMIT_PER_MINUTE=60
     volumes:
       - ./data:/app/data
-      - ./app:/app/app
+      - ./app:/app/app  # For development hot-reload
     depends_on:
       redis:
         condition: service_healthy
@@ -57,6 +74,9 @@ services:
     restart: unless-stopped
     ports:
       - "3000:80"
+    environment:
+      # API key for dashboard to use when calling API
+      - REACT_APP_API_KEY=${API_KEY:-}
     depends_on:
       api:
         condition: service_healthy

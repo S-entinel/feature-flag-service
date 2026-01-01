@@ -3,7 +3,15 @@ uvicorn==0.24.0
 sqlalchemy==2.0.23
 redis==5.0.1
 pydantic==2.5.0
+pydantic-settings==2.1.0  # For settings management
 pytest==7.4.3
 pytest-cov==4.1.0
 python-dotenv==1.0.0
 httpx==0.24.1
+
+# Security & validation
+email-validator==2.1.0  # For email validation if needed
+python-multipart==0.0.6  # For form data parsing
+
+# Optional: Rate limiting (if you add slowapi)
+# slowapi==0.1.9
