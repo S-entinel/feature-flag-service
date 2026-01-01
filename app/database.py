@@ -1,7 +1,5 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from redis import Redis
-from redis.exceptions import RedisError
 from app.models.flag import Base
 from app.services.cache_service import CacheService
 from app.config import settings
@@ -9,54 +7,30 @@ from app.config import settings
 # Database engine using centralized config
 engine = create_engine(
     settings.DATABASE_URL, 
-    connect_args=settings.sqlalchemy_connect_args
+    connect_args=settings.sqlalchemy_connect_args,
+    pool_pre_ping=True,  # Verify connections before using
+    pool_recycle=300,  # Recycle connections after 5 minutes (good for serverless)
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Redis client (singleton)
-_redis_client = None
+# Cache service (disabled for Vercel serverless)
 _cache_service = None
 
 
-def get_redis_client() -> Redis:
-    """Get or create Redis client"""
-    global _redis_client
-    
-    if _redis_client is None:
-        try:
-            _redis_client = Redis(
-                host=settings.REDIS_HOST,
-                port=settings.REDIS_PORT,
-                db=settings.REDIS_DB,
-                password=settings.REDIS_PASSWORD,
-                decode_responses=True,
-                socket_timeout=5,
-                socket_connect_timeout=5
-            )
-            # Test connection
-            _redis_client.ping()
-            print(f"✅ Redis connected: {settings.REDIS_HOST}:{settings.REDIS_PORT}")
-        except (RedisError, ConnectionError) as e:
-            print(f"⚠️  Redis connection failed: {e}")
-            print("⚠️  Running without cache")
-            _redis_client = None
-    
-    return _redis_client
-
-
 def get_cache_service() -> CacheService:
-    """Get or create cache service"""
+    """
+    Get cache service (disabled for Vercel serverless deployment)
+    
+    Vercel serverless functions are stateless, so Redis caching
+    doesn't provide much benefit. We disable it for simplicity.
+    """
     global _cache_service
     
     if _cache_service is None:
-        redis_client = get_redis_client()
-        _cache_service = CacheService(redis_client)
-        
-        if _cache_service.enabled:
-            print("✅ Cache service enabled")
-        else:
-            print("ℹ️  Cache service disabled (Redis not available)")
+        # Create disabled cache service (redis_client=None)
+        _cache_service = CacheService(redis_client=None)
+        print("ℹ️  Cache service disabled (Vercel serverless deployment)")
     
     return _cache_service
 
@@ -64,7 +38,7 @@ def get_cache_service() -> CacheService:
 def init_db():
     """Initialize database tables"""
     Base.metadata.create_all(bind=engine)
-    print(f"✅ Database initialized: {settings.DATABASE_URL}")
+    print(f"✅ Database initialized: {settings.DATABASE_URL[:50]}...")
 
 
 def get_db():
