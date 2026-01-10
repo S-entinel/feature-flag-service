@@ -1,243 +1,163 @@
+"""
+Cache service for feature flags using Redis (optional)
+"""
+
 import json
 import hashlib
-from typing import Optional, Any
-from redis import Redis
-from redis.exceptions import RedisError
+from typing import Optional, Tuple, Any
+
+# Try to import Redis, but make it optional
+try:
+    from redis import Redis, RedisError
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+    Redis = Any
+    RedisError = Exception
 
 
 class CacheService:
-    """Redis cache service for feature flags"""
+    """Service for caching feature flags and evaluations in Redis"""
     
-    def __init__(self, redis_client: Optional[Redis] = None):
+    def __init__(self, redis_client: Optional[Any] = None, ttl: int = 300):
         """
         Initialize cache service
         
         Args:
-            redis_client: Optional Redis client. If None, caching is disabled.
+            redis_client: Redis client instance (None = caching disabled)
+            ttl: Time-to-live for cache entries in seconds
         """
         self.redis = redis_client
-        self.default_ttl = 300  # 5 minutes
+        self.ttl = ttl
         self.enabled = redis_client is not None
     
-    def _make_key(self, prefix: str, identifier: str) -> str:
-        """Create a cache key with prefix"""
-        return f"flag:{prefix}:{identifier}"
+    def _get_flag_key(self, flag_key: str) -> str:
+        """Get Redis key for flag data"""
+        return f"flag:data:{flag_key}"
+    
+    def _get_eval_key(self, flag_key: str, user_id: Optional[str] = None) -> str:
+        """Get Redis key for flag evaluation"""
+        if user_id:
+            user_hash = hashlib.md5(user_id.encode()).hexdigest()[:16]
+            return f"flag:eval:{flag_key}:{user_hash}"
+        return f"flag:eval:{flag_key}"
     
     def get_flag(self, flag_key: str) -> Optional[dict]:
-        """
-        Get flag from cache
-        
-        Args:
-            flag_key: The flag key to retrieve
-            
-        Returns:
-            Flag data as dict, or None if not in cache
-        """
+        """Get cached flag data"""
         if not self.enabled:
             return None
         
         try:
-            cache_key = self._make_key("data", flag_key)
-            data = self.redis.get(cache_key)
-            
+            key = self._get_flag_key(flag_key)
+            data = self.redis.get(key)
             if data:
                 return json.loads(data)
-            return None
-        except (RedisError, json.JSONDecodeError):
-            # If cache fails, return None and let caller fetch from DB
-            return None
-    
-    def set_flag(self, flag_key: str, flag_data: dict, ttl: Optional[int] = None) -> bool:
-        """
-        Store flag in cache
+        except Exception as e:
+            print(f"Cache get error: {e}")
         
-        Args:
-            flag_key: The flag key
-            flag_data: Flag data to cache
-            ttl: Time to live in seconds (uses default if None)
-            
-        Returns:
-            True if successful, False otherwise
-        """
+        return None
+    
+    def set_flag(self, flag_key: str, flag_data: dict) -> bool:
+        """Cache flag data"""
         if not self.enabled:
             return False
         
         try:
-            cache_key = self._make_key("data", flag_key)
-            ttl = ttl or self.default_ttl
-            
-            self.redis.setex(
-                cache_key,
-                ttl,
-                json.dumps(flag_data)
-            )
+            key = self._get_flag_key(flag_key)
+            data = json.dumps(flag_data)
+            self.redis.setex(key, self.ttl, data)
             return True
-        except (RedisError, TypeError):
+        except Exception as e:
+            print(f"Cache set error: {e}")
             return False
     
-    def get_evaluation(self, flag_key: str, user_id: Optional[str] = None) -> Optional[tuple[bool, str]]:
-        """
-        Get cached evaluation result
-        
-        Args:
-            flag_key: The flag key
-            user_id: Optional user ID for user-specific evaluation
-            
-        Returns:
-            Tuple of (enabled, reason) or None if not cached
-        """
+    def get_evaluation(self, flag_key: str, user_id: Optional[str] = None) -> Optional[Tuple[bool, str]]:
+        """Get cached evaluation result"""
         if not self.enabled:
             return None
         
         try:
-            # Create cache key based on flag and user
-            if user_id:
-                # Hash user_id to keep cache keys reasonable length
-                user_hash = hashlib.sha256(user_id.encode()).hexdigest()[:16]
-                cache_key = self._make_key("eval", f"{flag_key}:{user_hash}")
-            else:
-                cache_key = self._make_key("eval", flag_key)
-            
-            data = self.redis.get(cache_key)
-            
+            key = self._get_eval_key(flag_key, user_id)
+            data = self.redis.get(key)
             if data:
                 result = json.loads(data)
-                return result["enabled"], result["reason"]
-            return None
-        except (RedisError, json.JSONDecodeError, KeyError):
-            return None
+                return (result['enabled'], result['reason'])
+        except Exception as e:
+            print(f"Cache get error: {e}")
+        
+        return None
     
     def set_evaluation(
         self, 
         flag_key: str, 
         enabled: bool, 
         reason: str,
-        user_id: Optional[str] = None,
-        ttl: Optional[int] = None
+        user_id: Optional[str] = None
     ) -> bool:
-        """
-        Cache evaluation result
-        
-        Args:
-            flag_key: The flag key
-            enabled: Whether flag is enabled
-            reason: Reason for the evaluation result
-            user_id: Optional user ID for user-specific evaluation
-            ttl: Time to live in seconds
-            
-        Returns:
-            True if successful, False otherwise
-        """
+        """Cache evaluation result"""
         if not self.enabled:
             return False
         
         try:
-            if user_id:
-                user_hash = hashlib.sha256(user_id.encode()).hexdigest()[:16]
-                cache_key = self._make_key("eval", f"{flag_key}:{user_hash}")
-            else:
-                cache_key = self._make_key("eval", flag_key)
-            
-            ttl = ttl or self.default_ttl
-            
-            data = {
-                "enabled": enabled,
-                "reason": reason
-            }
-            
-            self.redis.setex(
-                cache_key,
-                ttl,
-                json.dumps(data)
-            )
+            key = self._get_eval_key(flag_key, user_id)
+            data = json.dumps({'enabled': enabled, 'reason': reason})
+            self.redis.setex(key, self.ttl, data)
             return True
-        except (RedisError, TypeError):
+        except Exception as e:
+            print(f"Cache set error: {e}")
             return False
     
     def invalidate_flag(self, flag_key: str) -> bool:
-        """
-        Invalidate all cache entries for a flag
-        
-        Args:
-            flag_key: The flag key to invalidate
-            
-        Returns:
-            True if successful, False otherwise
-        """
+        """Invalidate all cache entries for a flag"""
         if not self.enabled:
             return False
         
         try:
-            # Delete flag data
-            data_key = self._make_key("data", flag_key)
+            data_key = self._get_flag_key(flag_key)
             self.redis.delete(data_key)
             
-            # Delete all evaluation caches for this flag
-            # Use pattern matching to find all eval keys
-            pattern = self._make_key("eval", f"{flag_key}*")
-            keys = self.redis.keys(pattern)
-            
-            if keys:
-                self.redis.delete(*keys)
+            eval_pattern = f"flag:eval:{flag_key}*"
+            eval_keys = self.redis.keys(eval_pattern)
+            if eval_keys:
+                self.redis.delete(*eval_keys)
             
             return True
-        except RedisError:
+        except Exception as e:
+            print(f"Cache invalidate error: {e}")
             return False
     
     def clear_all(self) -> bool:
-        """
-        Clear all flag caches (use with caution!)
-        
-        Returns:
-            True if successful, False otherwise
-        """
+        """Clear all cache entries"""
         if not self.enabled:
             return False
         
         try:
-            pattern = "flag:*"
-            keys = self.redis.keys(pattern)
-            
+            keys = self.redis.keys("flag:*")
             if keys:
                 self.redis.delete(*keys)
-            
             return True
-        except RedisError:
+        except Exception as e:
+            print(f"Cache clear error: {e}")
             return False
     
     def get_stats(self) -> dict:
-        """
-        Get cache statistics
-        
-        Returns:
-            Dictionary with cache stats
-        """
+        """Get cache statistics"""
         if not self.enabled:
-            return {"enabled": False}
+            return {
+                "enabled": False,
+                "message": "Cache is disabled"
+            }
         
         try:
-            info = self.redis.info("stats")
-            
-            # Count our keys
-            flag_keys = len(self.redis.keys("flag:*"))
-            
+            info = self.redis.info()
             return {
                 "enabled": True,
-                "flag_keys": flag_keys,
-                "keyspace_hits": info.get("keyspace_hits", 0),
-                "keyspace_misses": info.get("keyspace_misses", 0),
-                "hit_rate": self._calculate_hit_rate(
-                    info.get("keyspace_hits", 0),
-                    info.get("keyspace_misses", 0)
-                )
+                "hits": info.get("keyspace_hits", 0),
+                "misses": info.get("keyspace_misses", 0),
+                "keys": len(self.redis.keys("flag:*"))
             }
-        except RedisError:
-            return {"enabled": True, "error": "Could not fetch stats"}
-    
-    @staticmethod
-    def _calculate_hit_rate(hits: int, misses: int) -> float:
-        """Calculate cache hit rate percentage"""
-        total = hits + misses
-        if total == 0:
-            return 0.0
-        return round((hits / total) * 100, 2)
+        except Exception as e:
+            return {
+                "enabled": True,
+                "error": str(e)
+            }
