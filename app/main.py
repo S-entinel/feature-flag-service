@@ -1,13 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.database import init_db
 from app.api import flags
 from app.config import settings
 from app.security import get_api_key_info
-
-# Initialize database
-init_db()
 
 # Create FastAPI app
 app = FastAPI(
@@ -52,8 +48,8 @@ def health_check():
         "status": "healthy",
         "version": settings.APP_VERSION,
         "environment": "production" if settings.is_production else "development",
-        "database": "connected",  # Could add actual DB ping here
-        "cache": "enabled" if settings.REDIS_HOST else "disabled"
+        "database": "connected",
+        "cache": "disabled"  # No Redis in Vercel
     }
 
 
