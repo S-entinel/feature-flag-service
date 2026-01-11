@@ -33,7 +33,7 @@ def create_flag(
     **Authentication Required**: This endpoint requires a valid API key.
     """
     try:
-        new_flag = flag_service.create_flag(db, flag, user=api_key)
+        new_flag = flag_service.create_flag(db, flag)
         return new_flag
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -85,7 +85,7 @@ def update_flag(
     
     **Authentication Required**: This endpoint requires a valid API key.
     """
-    flag = flag_service.update_flag(db, flag_key, flag_update, user=api_key)
+    flag = flag_service.update_flag(db, flag_key, flag_update)
     if not flag:
         raise HTTPException(status_code=404, detail=f"Flag '{flag_key}' not found")
     return flag
@@ -103,7 +103,7 @@ def delete_flag(
     
     **Authentication Required**: This endpoint requires a valid API key.
     """
-    success = flag_service.delete_flag(db, flag_key, user=api_key)
+    success = flag_service.delete_flag(db, flag_key)
     if not success:
         raise HTTPException(status_code=404, detail=f"Flag '{flag_key}' not found")
 
